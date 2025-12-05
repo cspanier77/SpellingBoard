@@ -24,7 +24,7 @@
   <script>
     const { useState, useCallback, useEffect, useRef } = React;
 
-    const APP_VERSION = '1.1.0';
+    const APP_VERSION = '1.2.0';
     const STORAGE_KEY = 'spelling-board-settings';
 
     // Default settings
@@ -32,7 +32,6 @@
       letterColor: '#FFEB3B',
       layout: 'abc',
       speechRate: 0.9,
-      textSize: 'medium',
       voiceName: null
     };
 
@@ -162,7 +161,7 @@
       
       // Settings state (loaded from localStorage)
       const [settings, setSettings] = useState(loadSettings);
-      const { letterColor, layout, speechRate, textSize } = settings;
+      const { letterColor, layout, speechRate } = settings;
 
       // Save settings whenever they change
       useEffect(() => {
@@ -181,17 +180,6 @@
         { name: 'Pink', value: '#FF80AB', shadow: '#880E4F' },
         { name: 'White', value: '#FFFFFF', shadow: '#555555' }
       ];
-
-      const textSizeOptions = [
-        { name: 'Small', value: 'small', class: 'text-lg' },
-        { name: 'Medium', value: 'medium', class: 'text-xl' },
-        { name: 'Large', value: 'large', class: 'text-3xl' }
-      ];
-
-      const getTextSizeClass = () => {
-        const option = textSizeOptions.find(o => o.value === textSize);
-        return option ? option.class : 'text-xl';
-      };
 
       const getColorShadow = (color) => {
         const option = colorOptions.find(c => c.value === color);
@@ -401,41 +389,43 @@
       // Render QWERTY layout
       const renderQwertyLayout = () => {
         return React.createElement(React.Fragment, null,
-          // Letter rows
+          // Letter rows - full width
           qwertyRows.map((row, rowIndex) =>
-            React.createElement('div', { key: rowIndex, className: 'flex px-1 justify-center' },
-              row.letters.map(letter =>
-                React.createElement('button', {
-                  key: letter,
-                  onClick: () => handleLetterPress(letter),
-                  className: 'flex-1 max-w-16 mx-0.5 h-16 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
-                }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, letter))
+            React.createElement('div', { key: rowIndex, className: 'flex px-1' },
+              React.createElement('div', { className: 'flex flex-1 justify-center' },
+                row.letters.map(letter =>
+                  React.createElement('button', {
+                    key: letter,
+                    onClick: () => handleLetterPress(letter),
+                    className: 'flex-1 mx-0.5 h-20 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                  }, React.createElement('span', { className: 'text-6xl font-black', style: getLetterStyle() }, letter))
+                )
               )
             )
           ),
           // Bottom row with punctuation and space
-          React.createElement('div', { className: 'flex px-1 justify-center items-center mt-2 gap-2' },
+          React.createElement('div', { className: 'flex px-1 items-center mt-2' },
             React.createElement('button', {
               onClick: () => handleLetterPress('.'),
-              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
-            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '.')),
+              className: 'flex-1 h-14 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, '.')),
             React.createElement('button', {
               onClick: () => handleLetterPress('?'),
-              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
-            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '?')),
+              className: 'flex-1 h-14 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, '?')),
             React.createElement('button', {
               onClick: handleSpace,
-              className: 'w-48 h-12 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
+              className: 'flex-grow-[3] mx-2 h-14 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
               style: { boxShadow: '0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3)' }
-            }, React.createElement('span', { className: 'text-lg font-bold text-amber-900' }, 'SPACE')),
+            }, React.createElement('span', { className: 'text-xl font-bold text-amber-900' }, 'SPACE')),
             React.createElement('button', {
               onClick: () => handleLetterPress('!'),
-              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
-            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '!')),
+              className: 'flex-1 h-14 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, '!')),
             React.createElement('button', {
               onClick: () => handleLetterPress(','),
-              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
-            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, ','))
+              className: 'flex-1 h-14 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, ','))
           )
         );
       };
@@ -446,7 +436,7 @@
         }, 'Rotate to landscape for larger buttons'),
 
         React.createElement('div', { className: 'bg-white rounded-xl p-3 mb-2 min-h-14 shadow-lg' },
-          React.createElement('p', { className: `${getTextSizeClass()} text-gray-800 break-words min-h-6 font-medium` },
+          React.createElement('p', { className: 'text-xl text-gray-800 break-words min-h-6 font-medium' },
             text || React.createElement('span', { className: 'text-gray-400 italic' }, 'Tap letters to spell...')
           )
         ),
@@ -487,30 +477,6 @@
             }, 'QWERTY')
           ),
 
-          // Text size
-          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Display Text Size:'),
-          React.createElement('div', { className: 'flex gap-2 mb-3' },
-            textSizeOptions.map(option =>
-              React.createElement('button', {
-                key: option.value,
-                onClick: () => updateSetting('textSize', option.value),
-                className: `px-3 py-2 text-sm rounded ${textSize === option.value ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`
-              }, option.name)
-            )
-          ),
-
-          // Speech rate
-          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, `Speech Speed: ${speechRate.toFixed(1)}x`),
-          React.createElement('input', {
-            type: 'range',
-            min: '0.5',
-            max: '1.5',
-            step: '0.1',
-            value: speechRate,
-            onChange: (e) => updateSetting('speechRate', parseFloat(e.target.value)),
-            className: 'w-full mb-3 accent-blue-600'
-          }),
-
           // Color selection
           React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Letter Color:'),
           React.createElement('div', { className: 'flex gap-2 mb-3 flex-wrap' },
@@ -538,7 +504,7 @@
               )
             )
           ),
-          maleVoices.length > 0 && React.createElement('div', null,
+          maleVoices.length > 0 && React.createElement('div', { className: 'mb-3' },
             React.createElement('p', { className: 'text-gray-500 text-xs mb-1' }, 'Male:'),
             React.createElement('div', { className: 'flex flex-wrap gap-1' },
               maleVoices.map(v =>
@@ -549,7 +515,19 @@
                 }, isVoiceSelected(v) && React.createElement('span', null, '✓'), v.label)
               )
             )
-          )
+          ),
+
+          // Speech rate (moved below voices)
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, `Speech Speed: ${speechRate.toFixed(1)}x`),
+          React.createElement('input', {
+            type: 'range',
+            min: '0.5',
+            max: '1.5',
+            step: '0.1',
+            value: speechRate,
+            onChange: (e) => updateSetting('speechRate', parseFloat(e.target.value)),
+            className: 'w-full accent-blue-600'
+          })
         ),
 
         React.createElement('div', {
