@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Spelling Board - Communication Made Simple">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Spelling Board">
+  <title>Spelling Board</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; padding: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState, useCallback, useEffect } = React;
+
+    // Splash Screen Component
+    function SplashScreen({ onContinue }) {
+      return React.createElement('div', {
+        className: 'min-h-screen bg-gradient-to-b from-gray-900 to-black flex flex-col items-center justify-center p-6'
+      },
+        React.createElement('div', { className: 'mb-8 text-center' },
+          React.createElement('h1', {
+            className: 'text-5xl font-black tracking-tight mb-2 pb-2',
+            style: {
+              background: 'linear-gradient(135deg, #FFEB3B 0%, #FFEB3B 50%, #8B7500 100%)',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              lineHeight: '1.2'
+            }
+          }, 'Spelling Board'),
+          React.createElement('p', { className: 'text-gray-400 text-lg' }, 'Communication Made Simple')
+        ),
+        React.createElement('div', {
+          className: 'w-32 h-32 rounded-2xl bg-black border-2 border-gray-700 flex items-center justify-center mb-8',
+          style: { boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }
+        },
+          React.createElement('div', { className: 'grid grid-cols-3 gap-1' },
+            ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map(letter =>
+              React.createElement('span', {
+                key: letter,
+                className: 'text-lg font-black',
+                style: {
+                  background: 'linear-gradient(135deg, #FFEB3B 0%, #FFEB3B 50%, #8B7500 100%)',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }
+              }, letter)
+            )
+          )
+        ),
+        React.createElement('div', {
+          className: 'bg-blue-900/50 border border-blue-700 rounded-lg p-4 mb-8 max-w-xs text-center'
+        },
+          React.createElement('div', { className: 'text-3xl mb-2' }, '📱 ↻'),
+          React.createElement('p', { className: 'text-blue-200 text-sm' },
+            'For the best experience, please rotate your device to ',
+            React.createElement('strong', null, 'landscape mode')
+          )
+        ),
+        React.createElement('button', {
+          onClick: onContinue,
+          className: 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xl font-bold py-4 px-12 rounded-xl shadow-lg',
+          style: { boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }
+        }, 'Start'),
+        React.createElement('div', { className: 'mt-12 text-center max-w-sm' },
+          React.createElement('p', { className: 'text-gray-500 text-xs mb-2' }, 'Version 1.0.0'),
+          React.createElement('p', { className: 'text-gray-600 text-xs mb-2' }, '© 2025 Chris Spanier. All rights reserved.'),
+          React.createElement('p', { className: 'text-gray-700 text-xs leading-relaxed' },
+            'This app is provided as-is for communication assistance purposes. It is not a medical device and should not be used as a substitute for professional communication therapy or medical advice.'
+          )
+        )
+      );
+    }
+
+    // Main App Component
+    function SpellingBoardApp() {
+      const [text, setText] = useState('');
+      const [isSpeaking, setIsSpeaking] = useState(false);
+      const [displayVoices, setDisplayVoices] = useState([]);
+      const [selectedVoice, setSelectedVoice] = useState(null);
+      const [showSettings, setShowSettings] = useState(false);
+      const [letterColor, setLetterColor] = useState('#FFEB3B');
+      const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+
+      const brokenVoices = ['clayton', 'beauregard'];
+
+      const colorOptions = [
+        { name: 'Yellow', value: '#FFEB3B', shadow: '#8B7500' },
+        { name: 'Cyan', value: '#4DD0E1', shadow: '#006064' },
+        { name: 'Green', value: '#69F0AE', shadow: '#1B5E20' },
+        { name: 'Orange', value: '#FFAB40', shadow: '#8B4000' },
+        { name: 'Pink', value: '#FF80AB', shadow: '#880E4F' },
+        { name: 'White', value: '#FFFFFF', shadow: '#555555' }
+      ];
+
+      const getColorShadow = (color) => {
+        const option = colorOptions.find(c => c.value === color);
+        return option ? option.shadow : '#555555';
+      };
+
+      const categorizeVoices = (voices) => {
+        return voices.map((voice, index) => {
+          const name = voice.name.toLowerCase();
+          const isUK = /uk|british|england/i.test(voice.name) || voice.lang === 'en-GB';
+          const isFemale = /female|woman|girl|samantha|zira|kate|serena|victoria|susan|karen|fiona|moira|tessa|allison/i.test(name);
+          let label = voice.name
+            .replace('Microsoft ', '')
+            .replace('Google ', '')
+            .replace(' Online (Natural)', '')
+            .replace(' - English (United States)', '')
+            .replace(' - English (United Kingdom)', '');
+          if (isUK && !label.toLowerCase().includes('uk') && !label.toLowerCase().includes('british')) {
+            label += ' (UK)';
+          }
+          return { voice, index, label, gender: isFemale ? 'female' : 'male', accent: isUK ? 'uk' : 'us' };
+        });
+      };
+
+      useEffect(() => {
+        const handleResize = () => setIsPortrait(window.innerHeight > window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, []);
+
+      useEffect(() => {
+        const loadVoices = () => {
+          const availableVoices = window.speechSynthesis.getVoices();
+          if (availableVoices.length === 0) return;
+          const englishVoices = availableVoices
+            .filter(v => v.lang.startsWith('en'))
+            .filter(v => !brokenVoices.some(broken => v.name.toLowerCase().includes(broken)))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const categorized = categorizeVoices(englishVoices);
+          setDisplayVoices(categorized);
+          if (!selectedVoice && categorized.length > 0) {
+            const defaultVoice = categorized.find(v => v.gender === 'female' && v.accent === 'us') || categorized[0];
+            setSelectedVoice(defaultVoice.voice);
+          }
+        };
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        return () => { window.speechSynthesis.onvoiceschanged = null; };
+      }, [selectedVoice]);
+
+      const numbers = '1234567890'.split('');
+      const rows = [
+        { letters: ['A', 'B', 'C', 'D', 'E'], side: '.', isPunct: true },
+        { letters: ['F', 'G', 'H', 'I', 'J'], side: '?', isPunct: true },
+        { letters: ['K', 'L', 'M', 'N', 'O'], side: '!', isPunct: true },
+        { letters: ['P', 'Q', 'R', 'S', 'T'], side: ',', isPunct: true },
+        { letters: ['U', 'V', 'W', 'X', 'Y'], side: 'Z', isPunct: false }
+      ];
+
+      const handleLetterPress = useCallback((letter) => setText(prev => prev + letter), []);
+      const handleSpace = useCallback(() => setText(prev => prev + ' '), []);
+      const handleDelete = useCallback(() => setText(prev => prev.slice(0, -1)), []);
+      const handleClear = useCallback(() => setText(''), []);
+
+      const speakWithVoice = (textToSpeak, voiceToUse) => {
+        if (!('speechSynthesis' in window) || !textToSpeak.trim()) return;
+        window.speechSynthesis.cancel();
+        const sentences = textToSpeak.match(/[^.!?]*[.!?]+|[^.!?]+$/g) || [textToSpeak];
+        let sentenceIndex = 0;
+        const speakNext = () => {
+          if (sentenceIndex >= sentences.length) { setIsSpeaking(false); return; }
+          const sentence = sentences[sentenceIndex].trim();
+          if (!sentence) { sentenceIndex++; speakNext(); return; }
+          const utterance = new SpeechSynthesisUtterance(sentence);
+          if (voiceToUse) utterance.voice = voiceToUse;
+          const lastChar = sentence.slice(-1);
+          if (lastChar === '?') { utterance.pitch = 1.2; utterance.rate = 0.9; }
+          else if (lastChar === '!') { utterance.pitch = 1.15; utterance.rate = 1.0; utterance.volume = 1.0; }
+          else { utterance.pitch = 1.0; utterance.rate = 0.9; }
+          utterance.onend = () => { sentenceIndex++; speakNext(); };
+          utterance.onerror = () => setIsSpeaking(false);
+          window.speechSynthesis.speak(utterance);
+        };
+        setIsSpeaking(true);
+        speakNext();
+      };
+
+      const shadowColor = getColorShadow(letterColor);
+      const getLetterStyle = () => ({
+        background: `linear-gradient(135deg, ${letterColor} 0%, ${letterColor} 50%, ${shadowColor} 100%)`,
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        padding: '0 4px',
+        display: 'inline-block'
+      });
+
+      const femaleVoices = displayVoices.filter(v => v.gender === 'female');
+      const maleVoices = displayVoices.filter(v => v.gender === 'male');
+      const canSpeak = text.trim() && !isSpeaking;
+      const isVoiceSelected = (voiceData) => selectedVoice && selectedVoice.name === voiceData.voice.name;
+
+      return React.createElement('div', { className: 'min-h-screen bg-black p-2 flex flex-col' },
+        isPortrait && React.createElement('div', {
+          className: 'bg-blue-900 text-blue-200 text-xs text-center py-1 px-2 rounded mb-2'
+        }, 'Rotate to landscape for larger buttons'),
+
+        React.createElement('div', { className: 'bg-white rounded-xl p-3 mb-2 min-h-14 shadow-lg' },
+          React.createElement('p', { className: 'text-xl text-gray-800 break-words min-h-6 font-medium' },
+            text || React.createElement('span', { className: 'text-gray-400 italic' }, 'Tap letters to spell...')
+          )
+        ),
+
+        React.createElement('div', { className: 'flex gap-1 mb-2' },
+          React.createElement('button', {
+            onClick: handleDelete,
+            className: 'flex-1 h-12 bg-red-600 active:bg-red-700 text-white text-lg font-bold rounded-lg'
+          }, 'Delete'),
+          React.createElement('button', {
+            onClick: handleClear,
+            className: 'flex-1 h-12 bg-amber-500 active:bg-amber-600 text-white text-lg font-bold rounded-lg'
+          }, 'Clear'),
+          React.createElement('button', {
+            onClick: () => speakWithVoice(text, selectedVoice),
+            disabled: !canSpeak,
+            className: `flex-1 h-12 text-white text-lg font-bold rounded-lg bg-green-600 ${canSpeak ? 'active:bg-green-700' : 'opacity-50'}`
+          }, 'Speak'),
+          React.createElement('button', {
+            onClick: () => setShowSettings(!showSettings),
+            className: 'w-12 h-12 bg-blue-600 active:bg-blue-700 text-white text-xl font-bold rounded-lg'
+          }, '⚙')
+        ),
+
+        showSettings && React.createElement('div', {
+          className: 'bg-gray-900 rounded-lg p-3 mb-2 border border-gray-700'
+        },
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Letter Color:'),
+          React.createElement('div', { className: 'flex gap-2 mb-3 flex-wrap' },
+            colorOptions.map(color =>
+              React.createElement('button', {
+                key: color.value,
+                onClick: () => setLetterColor(color.value),
+                className: `w-10 h-10 rounded-full border-2 flex items-center justify-center ${letterColor === color.value ? 'border-white' : 'border-gray-600'}`,
+                style: { backgroundColor: color.value }
+              }, letterColor === color.value && React.createElement('span', { className: 'text-black text-lg' }, '✓'))
+            )
+          ),
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Voice:'),
+          femaleVoices.length > 0 && React.createElement('div', { className: 'mb-2' },
+            React.createElement('p', { className: 'text-gray-500 text-xs mb-1' }, 'Female:'),
+            React.createElement('div', { className: 'flex flex-wrap gap-1' },
+              femaleVoices.map(v =>
+                React.createElement('button', {
+                  key: v.voice.name,
+                  onClick: () => setSelectedVoice(v.voice),
+                  className: `px-2 py-1 text-xs rounded flex items-center gap-1 ${isVoiceSelected(v) ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 active:bg-gray-600'}`
+                }, isVoiceSelected(v) && React.createElement('span', null, '✓'), v.label)
+              )
+            )
+          ),
+          maleVoices.length > 0 && React.createElement('div', null,
+            React.createElement('p', { className: 'text-gray-500 text-xs mb-1' }, 'Male:'),
+            React.createElement('div', { className: 'flex flex-wrap gap-1' },
+              maleVoices.map(v =>
+                React.createElement('button', {
+                  key: v.voice.name,
+                  onClick: () => setSelectedVoice(v.voice),
+                  className: `px-2 py-1 text-xs rounded flex items-center gap-1 ${isVoiceSelected(v) ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 active:bg-gray-600'}`
+                }, isVoiceSelected(v) && React.createElement('span', null, '✓'), v.label)
+              )
+            )
+          )
+        ),
+
+        React.createElement('div', {
+          className: 'flex-1 flex flex-col gap-1 bg-black rounded-2xl p-2 pt-3 border border-gray-800',
+          style: { boxShadow: 'inset 0 2px 20px rgba(0,0,0,0.8), 0 4px 6px rgba(0,0,0,0.5)' }
+        },
+          React.createElement('div', { className: 'flex px-1 mb-1' },
+            React.createElement('div', { className: 'flex flex-1' },
+              numbers.map(num =>
+                React.createElement('button', {
+                  key: num,
+                  onClick: () => handleLetterPress(num),
+                  className: 'flex-1 mx-0.5 h-10 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                }, React.createElement('span', { className: 'text-2xl font-black', style: getLetterStyle() }, num))
+              )
+            )
+          ),
+          React.createElement('div', { className: 'h-px bg-gray-800 mx-2 mb-1' }),
+          rows.map((row, rowIndex) =>
+            React.createElement('div', { key: rowIndex },
+              !row.isPunct && React.createElement('div', { className: 'flex px-1 mb-1' },
+                React.createElement('div', { className: 'flex-1' }),
+                React.createElement('div', { className: 'w-14 ml-2 flex justify-center' },
+                  React.createElement('div', { className: 'w-10 h-px bg-gray-700' })
+                )
+              ),
+              React.createElement('div', { className: 'flex px-1' },
+                React.createElement('div', { className: 'flex flex-1' },
+                  row.letters.map(letter =>
+                    React.createElement('button', {
+                      key: letter,
+                      onClick: () => handleLetterPress(letter),
+                      className: 'flex-1 mx-0.5 h-14 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                    }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, letter))
+                  )
+                ),
+                React.createElement('div', {
+                  className: `w-14 flex items-center justify-center ml-2 ${row.isPunct ? 'border-l border-gray-800' : ''}`
+                },
+                  React.createElement('button', {
+                    onClick: () => handleLetterPress(row.side),
+                    className: 'w-12 h-14 flex items-center justify-center rounded-md active:opacity-70'
+                  }, React.createElement('span', {
+                    className: `font-black ${row.isPunct ? 'text-3xl' : 'text-4xl'}`,
+                    style: getLetterStyle()
+                  }, row.side))
+                )
+              )
+            )
+          ),
+          React.createElement('div', { className: 'flex justify-center mt-2' },
+            React.createElement('button', {
+              onClick: handleSpace,
+              className: 'w-40 h-10 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
+              style: { boxShadow: '0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3)' }
+            }, React.createElement('span', { className: 'text-base font-bold text-amber-900' }, 'SPACE'))
+          )
+        ),
+        React.createElement('p', { className: 'text-center text-gray-600 text-xs mt-2' }, 'Tap ⚙ to change color and voice')
+      );
+    }
+
+    // Main App
+    function SpellingBoard() {
+      const [showSplash, setShowSplash] = useState(true);
+      if (showSplash) {
+        return React.createElement(SplashScreen, { onContinue: () => setShowSplash(false) });
+      }
+      return React.createElement(SpellingBoardApp);
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(SpellingBoard));
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
