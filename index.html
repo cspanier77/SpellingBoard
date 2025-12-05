@@ -24,6 +24,34 @@
   <script>
     const { useState, useCallback, useEffect } = React;
 
+    // Curated voice configuration
+    const VOICE_CONFIG = {
+      // Voices to completely exclude (novelty, broken, or unusable)
+      blocked: [
+        'bad news', 'bells', 'boing', 'bubbles', 'cellos', 'good news', 
+        'organ', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
+        'jester', 'hysterical', 'deranged', 'bahh', 'junior', 'kathy',
+        'princess', 'ralph', 'fred', 'bruce', 'agnes', 'albert',
+        'clayton', 'beauregard', 'grandma', 'grandpa', 'eddy', 'flo',
+        'reed', 'rocko', 'sandy', 'shelley', 'novelty'
+      ],
+      // Explicit female voices (for accurate categorization)
+      female: [
+        'samantha', 'karen', 'fiona', 'moira', 'victoria', 'allison',
+        'susan', 'kate', 'serena', 'tessa', 'ava', 'zira', 'sara',
+        'nicky', 'joana', 'paulina', 'monica', 'luciana', 'helena',
+        'google us english female', 'google uk english female',
+        'microsoft zira', 'microsoft eva', 'female'
+      ],
+      // Explicit male voices (for accurate categorization)
+      male: [
+        'daniel', 'david', 'alex', 'tom', 'oliver', 'aaron', 'arthur',
+        'lee', 'james', 'martin', 'rishi', 'gordon', 'evan',
+        'google us english male', 'google uk english male',
+        'microsoft david', 'microsoft mark', 'male'
+      ]
+    };
+
     // Splash Screen Component
     function SplashScreen({ onContinue }) {
       return React.createElement('div', {
@@ -76,7 +104,7 @@
           style: { boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }
         }, 'Start'),
         React.createElement('div', { className: 'mt-12 text-center max-w-sm' },
-          React.createElement('p', { className: 'text-gray-500 text-xs mb-2' }, 'Version 1.0.0'),
+          React.createElement('p', { className: 'text-gray-500 text-xs mb-2' }, 'Version 1.0.1'),
           React.createElement('p', { className: 'text-gray-600 text-xs mb-2' }, '© 2025 Chris Spanier. All rights reserved.'),
           React.createElement('p', { className: 'text-gray-700 text-xs leading-relaxed' },
             'This app is provided as-is for communication assistance purposes. It is not a medical device and should not be used as a substitute for professional communication therapy or medical advice.'
@@ -95,8 +123,6 @@
       const [letterColor, setLetterColor] = useState('#FFEB3B');
       const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
 
-      const brokenVoices = ['clayton', 'beauregard'];
-
       const colorOptions = [
         { name: 'Yellow', value: '#FFEB3B', shadow: '#8B7500' },
         { name: 'Cyan', value: '#4DD0E1', shadow: '#006064' },
@@ -111,22 +137,59 @@
         return option ? option.shadow : '#555555';
       };
 
-      const categorizeVoices = (voices) => {
-        return voices.map((voice, index) => {
-          const name = voice.name.toLowerCase();
-          const isUK = /uk|british|england/i.test(voice.name) || voice.lang === 'en-GB';
-          const isFemale = /female|woman|girl|samantha|zira|kate|serena|victoria|susan|karen|fiona|moira|tessa|allison/i.test(name);
-          let label = voice.name
-            .replace('Microsoft ', '')
-            .replace('Google ', '')
-            .replace(' Online (Natural)', '')
-            .replace(' - English (United States)', '')
-            .replace(' - English (United Kingdom)', '');
-          if (isUK && !label.toLowerCase().includes('uk') && !label.toLowerCase().includes('british')) {
-            label += ' (UK)';
-          }
-          return { voice, index, label, gender: isFemale ? 'female' : 'male', accent: isUK ? 'uk' : 'us' };
-        });
+      const isVoiceBlocked = (voiceName) => {
+        const name = voiceName.toLowerCase();
+        return VOICE_CONFIG.blocked.some(blocked => name.includes(blocked));
+      };
+
+      const getVoiceGender = (voiceName) => {
+        const name = voiceName.toLowerCase();
+        if (VOICE_CONFIG.female.some(f => name.includes(f))) return 'female';
+        if (VOICE_CONFIG.male.some(m => name.includes(m))) return 'male';
+        return 'unknown';
+      };
+
+      const getCleanLabel = (voiceName) => {
+        return voiceName
+          .replace('Microsoft ', '')
+          .replace('Google ', '')
+          .replace(' Online (Natural)', '')
+          .replace(' - English (United States)', ' (US)')
+          .replace(' - English (United Kingdom)', ' (UK)')
+          .replace('English (United States)', '(US)')
+          .replace('English (United Kingdom)', '(UK)')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      const processVoices = (voices) => {
+        const seen = new Set();
+        const processed = [];
+
+        for (const voice of voices) {
+          // Skip blocked voices
+          if (isVoiceBlocked(voice.name)) continue;
+
+          // Create a normalized key to detect duplicates
+          const baseLabel = getCleanLabel(voice.name);
+          const normalizedKey = baseLabel.toLowerCase().replace(/[^a-z]/g, '');
+          
+          // Skip if we've seen this voice already
+          if (seen.has(normalizedKey)) continue;
+          seen.add(normalizedKey);
+
+          const gender = getVoiceGender(voice.name);
+          // Skip unknown gender voices (likely novelty)
+          if (gender === 'unknown') continue;
+
+          processed.push({
+            voice: voice,
+            label: baseLabel,
+            gender: gender
+          });
+        }
+
+        return processed.sort((a, b) => a.label.localeCompare(b.label));
       };
 
       useEffect(() => {
@@ -139,17 +202,17 @@
         const loadVoices = () => {
           const availableVoices = window.speechSynthesis.getVoices();
           if (availableVoices.length === 0) return;
-          const englishVoices = availableVoices
-            .filter(v => v.lang.startsWith('en'))
-            .filter(v => !brokenVoices.some(broken => v.name.toLowerCase().includes(broken)))
-            .sort((a, b) => a.name.localeCompare(b.name));
-          const categorized = categorizeVoices(englishVoices);
-          setDisplayVoices(categorized);
-          if (!selectedVoice && categorized.length > 0) {
-            const defaultVoice = categorized.find(v => v.gender === 'female' && v.accent === 'us') || categorized[0];
+          
+          const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
+          const processed = processVoices(englishVoices);
+          setDisplayVoices(processed);
+          
+          if (!selectedVoice && processed.length > 0) {
+            const defaultVoice = processed.find(v => v.gender === 'female') || processed[0];
             setSelectedVoice(defaultVoice.voice);
           }
         };
+        
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
         return () => { window.speechSynthesis.onvoiceschanged = null; };
@@ -289,8 +352,8 @@
                 React.createElement('button', {
                   key: num,
                   onClick: () => handleLetterPress(num),
-                  className: 'flex-1 mx-0.5 h-10 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
-                }, React.createElement('span', { className: 'text-2xl font-black', style: getLetterStyle() }, num))
+                  className: 'flex-1 mx-0.5 h-12 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, num))
               )
             )
           ),
@@ -299,8 +362,8 @@
             React.createElement('div', { key: rowIndex },
               !row.isPunct && React.createElement('div', { className: 'flex px-1 mb-1' },
                 React.createElement('div', { className: 'flex-1' }),
-                React.createElement('div', { className: 'w-14 ml-2 flex justify-center' },
-                  React.createElement('div', { className: 'w-10 h-px bg-gray-700' })
+                React.createElement('div', { className: 'w-20 ml-2 flex justify-center' },
+                  React.createElement('div', { className: 'w-14 h-px bg-gray-700' })
                 )
               ),
               React.createElement('div', { className: 'flex px-1' },
@@ -309,18 +372,18 @@
                     React.createElement('button', {
                       key: letter,
                       onClick: () => handleLetterPress(letter),
-                      className: 'flex-1 mx-0.5 h-14 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
-                    }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, letter))
+                      className: 'flex-1 mx-0.5 h-20 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                    }, React.createElement('span', { className: 'text-6xl font-black', style: getLetterStyle() }, letter))
                   )
                 ),
                 React.createElement('div', {
-                  className: `w-14 flex items-center justify-center ml-2 ${row.isPunct ? 'border-l border-gray-800' : ''}`
+                  className: `w-20 flex items-center justify-center ml-2 ${row.isPunct ? 'border-l border-gray-800' : ''}`
                 },
                   React.createElement('button', {
                     onClick: () => handleLetterPress(row.side),
-                    className: 'w-12 h-14 flex items-center justify-center rounded-md active:opacity-70'
+                    className: 'w-16 h-20 flex items-center justify-center rounded-md active:opacity-70'
                   }, React.createElement('span', {
-                    className: `font-black ${row.isPunct ? 'text-3xl' : 'text-4xl'}`,
+                    className: `font-black ${row.isPunct ? 'text-5xl' : 'text-6xl'}`,
                     style: getLetterStyle()
                   }, row.side))
                 )
@@ -330,9 +393,9 @@
           React.createElement('div', { className: 'flex justify-center mt-2' },
             React.createElement('button', {
               onClick: handleSpace,
-              className: 'w-40 h-10 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
+              className: 'w-48 h-12 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
               style: { boxShadow: '0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3)' }
-            }, React.createElement('span', { className: 'text-base font-bold text-amber-900' }, 'SPACE'))
+            }, React.createElement('span', { className: 'text-lg font-bold text-amber-900' }, 'SPACE'))
           )
         ),
         React.createElement('p', { className: 'text-center text-gray-600 text-xs mt-2' }, 'Tap ⚙ to change color and voice')
