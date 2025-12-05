@@ -22,11 +22,51 @@
 <body>
   <div id="root"></div>
   <script>
-    const { useState, useCallback, useEffect } = React;
+    const { useState, useCallback, useEffect, useRef } = React;
+
+    const APP_VERSION = '1.1.0';
+    const STORAGE_KEY = 'spelling-board-settings';
+
+    // Default settings
+    const DEFAULT_SETTINGS = {
+      letterColor: '#FFEB3B',
+      layout: 'abc',
+      speechRate: 0.9,
+      textSize: 'medium',
+      voiceName: null
+    };
+
+    // Load settings from localStorage
+    const loadSettings = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        }
+      } catch (e) {
+        console.log('Could not load settings:', e);
+      }
+      return DEFAULT_SETTINGS;
+    };
+
+    // Save settings to localStorage
+    const saveSettings = (settings) => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      } catch (e) {
+        console.log('Could not save settings:', e);
+      }
+    };
+
+    // Haptic feedback
+    const vibrate = () => {
+      if (navigator.vibrate) {
+        navigator.vibrate(10);
+      }
+    };
 
     // Curated voice configuration
     const VOICE_CONFIG = {
-      // Voices to completely exclude (novelty, broken, or unusable)
       blocked: [
         'bad news', 'bells', 'boing', 'bubbles', 'cellos', 'good news', 
         'organ', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
@@ -35,7 +75,6 @@
         'clayton', 'beauregard', 'grandma', 'grandpa', 'eddy', 'flo',
         'reed', 'rocko', 'sandy', 'shelley', 'novelty'
       ],
-      // Explicit female voices (for accurate categorization)
       female: [
         'samantha', 'karen', 'fiona', 'moira', 'victoria', 'allison',
         'susan', 'kate', 'serena', 'tessa', 'ava', 'zira', 'sara',
@@ -43,7 +82,6 @@
         'google us english female', 'google uk english female',
         'microsoft zira', 'microsoft eva', 'female'
       ],
-      // Explicit male voices (for accurate categorization)
       male: [
         'daniel', 'david', 'alex', 'tom', 'oliver', 'aaron', 'arthur',
         'lee', 'james', 'martin', 'rishi', 'gordon', 'evan',
@@ -104,7 +142,7 @@
           style: { boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }
         }, 'Start'),
         React.createElement('div', { className: 'mt-12 text-center max-w-sm' },
-          React.createElement('p', { className: 'text-gray-500 text-xs mb-2' }, 'Version 1.0.1'),
+          React.createElement('p', { className: 'text-gray-500 text-xs mb-2' }, `Version ${APP_VERSION}`),
           React.createElement('p', { className: 'text-gray-600 text-xs mb-2' }, '© 2025 Chris Spanier. All rights reserved.'),
           React.createElement('p', { className: 'text-gray-700 text-xs leading-relaxed' },
             'This app is provided as-is for communication assistance purposes. It is not a medical device and should not be used as a substitute for professional communication therapy or medical advice.'
@@ -120,8 +158,20 @@
       const [displayVoices, setDisplayVoices] = useState([]);
       const [selectedVoice, setSelectedVoice] = useState(null);
       const [showSettings, setShowSettings] = useState(false);
-      const [letterColor, setLetterColor] = useState('#FFEB3B');
       const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+      
+      // Settings state (loaded from localStorage)
+      const [settings, setSettings] = useState(loadSettings);
+      const { letterColor, layout, speechRate, textSize } = settings;
+
+      // Save settings whenever they change
+      useEffect(() => {
+        saveSettings(settings);
+      }, [settings]);
+
+      const updateSetting = (key, value) => {
+        setSettings(prev => ({ ...prev, [key]: value }));
+      };
 
       const colorOptions = [
         { name: 'Yellow', value: '#FFEB3B', shadow: '#8B7500' },
@@ -131,6 +181,17 @@
         { name: 'Pink', value: '#FF80AB', shadow: '#880E4F' },
         { name: 'White', value: '#FFFFFF', shadow: '#555555' }
       ];
+
+      const textSizeOptions = [
+        { name: 'Small', value: 'small', class: 'text-lg' },
+        { name: 'Medium', value: 'medium', class: 'text-xl' },
+        { name: 'Large', value: 'large', class: 'text-3xl' }
+      ];
+
+      const getTextSizeClass = () => {
+        const option = textSizeOptions.find(o => o.value === textSize);
+        return option ? option.class : 'text-xl';
+      };
 
       const getColorShadow = (color) => {
         const option = colorOptions.find(c => c.value === color);
@@ -165,30 +226,16 @@
       const processVoices = (voices) => {
         const seen = new Set();
         const processed = [];
-
         for (const voice of voices) {
-          // Skip blocked voices
           if (isVoiceBlocked(voice.name)) continue;
-
-          // Create a normalized key to detect duplicates
           const baseLabel = getCleanLabel(voice.name);
           const normalizedKey = baseLabel.toLowerCase().replace(/[^a-z]/g, '');
-          
-          // Skip if we've seen this voice already
           if (seen.has(normalizedKey)) continue;
           seen.add(normalizedKey);
-
           const gender = getVoiceGender(voice.name);
-          // Skip unknown gender voices (likely novelty)
           if (gender === 'unknown') continue;
-
-          processed.push({
-            voice: voice,
-            label: baseLabel,
-            gender: gender
-          });
+          processed.push({ voice, label: baseLabel, gender });
         }
-
         return processed.sort((a, b) => a.label.localeCompare(b.label));
       };
 
@@ -202,24 +249,38 @@
         const loadVoices = () => {
           const availableVoices = window.speechSynthesis.getVoices();
           if (availableVoices.length === 0) return;
-          
           const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
           const processed = processVoices(englishVoices);
           setDisplayVoices(processed);
           
+          // Try to restore saved voice or pick default
           if (!selectedVoice && processed.length > 0) {
-            const defaultVoice = processed.find(v => v.gender === 'female') || processed[0];
-            setSelectedVoice(defaultVoice.voice);
+            const savedVoiceName = settings.voiceName;
+            const savedVoice = savedVoiceName && processed.find(v => v.voice.name === savedVoiceName);
+            if (savedVoice) {
+              setSelectedVoice(savedVoice.voice);
+            } else {
+              const defaultVoice = processed.find(v => v.gender === 'female') || processed[0];
+              setSelectedVoice(defaultVoice.voice);
+            }
           }
         };
-        
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
         return () => { window.speechSynthesis.onvoiceschanged = null; };
+      }, [selectedVoice, settings.voiceName]);
+
+      // Save voice name when voice changes
+      useEffect(() => {
+        if (selectedVoice) {
+          updateSetting('voiceName', selectedVoice.name);
+        }
       }, [selectedVoice]);
 
       const numbers = '1234567890'.split('');
-      const rows = [
+      
+      // Layout configurations
+      const abcRows = [
         { letters: ['A', 'B', 'C', 'D', 'E'], side: '.', isPunct: true },
         { letters: ['F', 'G', 'H', 'I', 'J'], side: '?', isPunct: true },
         { letters: ['K', 'L', 'M', 'N', 'O'], side: '!', isPunct: true },
@@ -227,10 +288,33 @@
         { letters: ['U', 'V', 'W', 'X', 'Y'], side: 'Z', isPunct: false }
       ];
 
-      const handleLetterPress = useCallback((letter) => setText(prev => prev + letter), []);
-      const handleSpace = useCallback(() => setText(prev => prev + ' '), []);
-      const handleDelete = useCallback(() => setText(prev => prev.slice(0, -1)), []);
-      const handleClear = useCallback(() => setText(''), []);
+      const qwertyRows = [
+        { letters: ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'] },
+        { letters: ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'] },
+        { letters: ['Z', 'X', 'C', 'V', 'B', 'N', 'M'] }
+      ];
+
+      const isQwerty = layout === 'qwerty';
+
+      const handleLetterPress = useCallback((letter) => {
+        vibrate();
+        setText(prev => prev + letter);
+      }, []);
+
+      const handleSpace = useCallback(() => {
+        vibrate();
+        setText(prev => prev + ' ');
+      }, []);
+
+      const handleDelete = useCallback(() => {
+        vibrate();
+        setText(prev => prev.slice(0, -1));
+      }, []);
+
+      const handleClear = useCallback(() => {
+        vibrate();
+        setText('');
+      }, []);
 
       const speakWithVoice = (textToSpeak, voiceToUse) => {
         if (!('speechSynthesis' in window) || !textToSpeak.trim()) return;
@@ -244,9 +328,17 @@
           const utterance = new SpeechSynthesisUtterance(sentence);
           if (voiceToUse) utterance.voice = voiceToUse;
           const lastChar = sentence.slice(-1);
-          if (lastChar === '?') { utterance.pitch = 1.2; utterance.rate = 0.9; }
-          else if (lastChar === '!') { utterance.pitch = 1.15; utterance.rate = 1.0; utterance.volume = 1.0; }
-          else { utterance.pitch = 1.0; utterance.rate = 0.9; }
+          if (lastChar === '?') { 
+            utterance.pitch = 1.2; 
+            utterance.rate = speechRate; 
+          } else if (lastChar === '!') { 
+            utterance.pitch = 1.15; 
+            utterance.rate = speechRate + 0.1; 
+            utterance.volume = 1.0; 
+          } else { 
+            utterance.pitch = 1.0; 
+            utterance.rate = speechRate; 
+          }
           utterance.onend = () => { sentenceIndex++; speakNext(); };
           utterance.onerror = () => setIsSpeaking(false);
           window.speechSynthesis.speak(utterance);
@@ -261,7 +353,7 @@
         WebkitBackgroundClip: 'text',
         backgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
-        padding: '0 4px',
+        padding: '0 2px',
         display: 'inline-block'
       });
 
@@ -270,13 +362,91 @@
       const canSpeak = text.trim() && !isSpeaking;
       const isVoiceSelected = (voiceData) => selectedVoice && selectedVoice.name === voiceData.voice.name;
 
+      // Render ABC layout
+      const renderAbcLayout = () => {
+        return abcRows.map((row, rowIndex) =>
+          React.createElement('div', { key: rowIndex },
+            !row.isPunct && React.createElement('div', { className: 'flex px-1 mb-1' },
+              React.createElement('div', { className: 'flex-1' }),
+              React.createElement('div', { className: 'w-20 ml-2 flex justify-center' },
+                React.createElement('div', { className: 'w-14 h-px bg-gray-700' })
+              )
+            ),
+            React.createElement('div', { className: 'flex px-1' },
+              React.createElement('div', { className: 'flex flex-1' },
+                row.letters.map(letter =>
+                  React.createElement('button', {
+                    key: letter,
+                    onClick: () => handleLetterPress(letter),
+                    className: 'flex-1 mx-0.5 h-20 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                  }, React.createElement('span', { className: 'text-6xl font-black', style: getLetterStyle() }, letter))
+                )
+              ),
+              React.createElement('div', {
+                className: `w-20 flex items-center justify-center ml-2 ${row.isPunct ? 'border-l border-gray-800' : ''}`
+              },
+                React.createElement('button', {
+                  onClick: () => handleLetterPress(row.side),
+                  className: 'w-16 h-20 flex items-center justify-center rounded-md active:opacity-70'
+                }, React.createElement('span', {
+                  className: `font-black ${row.isPunct ? 'text-5xl' : 'text-6xl'}`,
+                  style: getLetterStyle()
+                }, row.side))
+              )
+            )
+          )
+        );
+      };
+
+      // Render QWERTY layout
+      const renderQwertyLayout = () => {
+        return React.createElement(React.Fragment, null,
+          // Letter rows
+          qwertyRows.map((row, rowIndex) =>
+            React.createElement('div', { key: rowIndex, className: 'flex px-1 justify-center' },
+              row.letters.map(letter =>
+                React.createElement('button', {
+                  key: letter,
+                  onClick: () => handleLetterPress(letter),
+                  className: 'flex-1 max-w-16 mx-0.5 h-16 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                }, React.createElement('span', { className: 'text-5xl font-black', style: getLetterStyle() }, letter))
+              )
+            )
+          ),
+          // Bottom row with punctuation and space
+          React.createElement('div', { className: 'flex px-1 justify-center items-center mt-2 gap-2' },
+            React.createElement('button', {
+              onClick: () => handleLetterPress('.'),
+              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '.')),
+            React.createElement('button', {
+              onClick: () => handleLetterPress('?'),
+              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '?')),
+            React.createElement('button', {
+              onClick: handleSpace,
+              className: 'w-48 h-12 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
+              style: { boxShadow: '0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3)' }
+            }, React.createElement('span', { className: 'text-lg font-bold text-amber-900' }, 'SPACE')),
+            React.createElement('button', {
+              onClick: () => handleLetterPress('!'),
+              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, '!')),
+            React.createElement('button', {
+              onClick: () => handleLetterPress(','),
+              className: 'w-12 h-12 flex items-center justify-center rounded-md active:opacity-70'
+            }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, ','))
+          )
+        );
+      };
+
       return React.createElement('div', { className: 'min-h-screen bg-black p-2 flex flex-col' },
         isPortrait && React.createElement('div', {
           className: 'bg-blue-900 text-blue-200 text-xs text-center py-1 px-2 rounded mb-2'
         }, 'Rotate to landscape for larger buttons'),
 
         React.createElement('div', { className: 'bg-white rounded-xl p-3 mb-2 min-h-14 shadow-lg' },
-          React.createElement('p', { className: 'text-xl text-gray-800 break-words min-h-6 font-medium' },
+          React.createElement('p', { className: `${getTextSizeClass()} text-gray-800 break-words min-h-6 font-medium` },
             text || React.createElement('span', { className: 'text-gray-400 italic' }, 'Tap letters to spell...')
           )
         ),
@@ -302,19 +472,59 @@
         ),
 
         showSettings && React.createElement('div', {
-          className: 'bg-gray-900 rounded-lg p-3 mb-2 border border-gray-700'
+          className: 'bg-gray-900 rounded-lg p-3 mb-2 border border-gray-700 max-h-64 overflow-y-auto'
         },
+          // Layout toggle
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Keyboard Layout:'),
+          React.createElement('div', { className: 'flex gap-2 mb-3' },
+            React.createElement('button', {
+              onClick: () => updateSetting('layout', 'abc'),
+              className: `px-4 py-2 text-sm rounded font-bold ${layout === 'abc' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`
+            }, 'ABC'),
+            React.createElement('button', {
+              onClick: () => updateSetting('layout', 'qwerty'),
+              className: `px-4 py-2 text-sm rounded font-bold ${layout === 'qwerty' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`
+            }, 'QWERTY')
+          ),
+
+          // Text size
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Display Text Size:'),
+          React.createElement('div', { className: 'flex gap-2 mb-3' },
+            textSizeOptions.map(option =>
+              React.createElement('button', {
+                key: option.value,
+                onClick: () => updateSetting('textSize', option.value),
+                className: `px-3 py-2 text-sm rounded ${textSize === option.value ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`
+              }, option.name)
+            )
+          ),
+
+          // Speech rate
+          React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, `Speech Speed: ${speechRate.toFixed(1)}x`),
+          React.createElement('input', {
+            type: 'range',
+            min: '0.5',
+            max: '1.5',
+            step: '0.1',
+            value: speechRate,
+            onChange: (e) => updateSetting('speechRate', parseFloat(e.target.value)),
+            className: 'w-full mb-3 accent-blue-600'
+          }),
+
+          // Color selection
           React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Letter Color:'),
           React.createElement('div', { className: 'flex gap-2 mb-3 flex-wrap' },
             colorOptions.map(color =>
               React.createElement('button', {
                 key: color.value,
-                onClick: () => setLetterColor(color.value),
+                onClick: () => updateSetting('letterColor', color.value),
                 className: `w-10 h-10 rounded-full border-2 flex items-center justify-center ${letterColor === color.value ? 'border-white' : 'border-gray-600'}`,
                 style: { backgroundColor: color.value }
               }, letterColor === color.value && React.createElement('span', { className: 'text-black text-lg' }, '✓'))
             )
           ),
+
+          // Voice selection
           React.createElement('p', { className: 'text-gray-400 text-xs mb-2' }, 'Voice:'),
           femaleVoices.length > 0 && React.createElement('div', { className: 'mb-2' },
             React.createElement('p', { className: 'text-gray-500 text-xs mb-1' }, 'Female:'),
@@ -346,51 +556,25 @@
           className: 'flex-1 flex flex-col gap-1 bg-black rounded-2xl p-2 pt-3 border border-gray-800',
           style: { boxShadow: 'inset 0 2px 20px rgba(0,0,0,0.8), 0 4px 6px rgba(0,0,0,0.5)' }
         },
+          // Numbers row
           React.createElement('div', { className: 'flex px-1 mb-1' },
-            React.createElement('div', { className: 'flex flex-1' },
+            React.createElement('div', { className: 'flex flex-1 justify-center' },
               numbers.map(num =>
                 React.createElement('button', {
                   key: num,
                   onClick: () => handleLetterPress(num),
-                  className: 'flex-1 mx-0.5 h-12 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
+                  className: 'flex-1 max-w-12 mx-0.5 h-12 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
                 }, React.createElement('span', { className: 'text-4xl font-black', style: getLetterStyle() }, num))
               )
             )
           ),
           React.createElement('div', { className: 'h-px bg-gray-800 mx-2 mb-1' }),
-          rows.map((row, rowIndex) =>
-            React.createElement('div', { key: rowIndex },
-              !row.isPunct && React.createElement('div', { className: 'flex px-1 mb-1' },
-                React.createElement('div', { className: 'flex-1' }),
-                React.createElement('div', { className: 'w-20 ml-2 flex justify-center' },
-                  React.createElement('div', { className: 'w-14 h-px bg-gray-700' })
-                )
-              ),
-              React.createElement('div', { className: 'flex px-1' },
-                React.createElement('div', { className: 'flex flex-1' },
-                  row.letters.map(letter =>
-                    React.createElement('button', {
-                      key: letter,
-                      onClick: () => handleLetterPress(letter),
-                      className: 'flex-1 mx-0.5 h-20 flex items-center justify-center rounded-md active:opacity-70 overflow-visible'
-                    }, React.createElement('span', { className: 'text-6xl font-black', style: getLetterStyle() }, letter))
-                  )
-                ),
-                React.createElement('div', {
-                  className: `w-20 flex items-center justify-center ml-2 ${row.isPunct ? 'border-l border-gray-800' : ''}`
-                },
-                  React.createElement('button', {
-                    onClick: () => handleLetterPress(row.side),
-                    className: 'w-16 h-20 flex items-center justify-center rounded-md active:opacity-70'
-                  }, React.createElement('span', {
-                    className: `font-black ${row.isPunct ? 'text-5xl' : 'text-6xl'}`,
-                    style: getLetterStyle()
-                  }, row.side))
-                )
-              )
-            )
-          ),
-          React.createElement('div', { className: 'flex justify-center mt-2' },
+          
+          // Layout-specific content
+          isQwerty ? renderQwertyLayout() : renderAbcLayout(),
+          
+          // Space bar for ABC layout only (QWERTY has it in the bottom row)
+          !isQwerty && React.createElement('div', { className: 'flex justify-center mt-2' },
             React.createElement('button', {
               onClick: handleSpace,
               className: 'w-48 h-12 rounded-lg active:opacity-80 bg-amber-200 border border-amber-400',
@@ -398,7 +582,7 @@
             }, React.createElement('span', { className: 'text-lg font-bold text-amber-900' }, 'SPACE'))
           )
         ),
-        React.createElement('p', { className: 'text-center text-gray-600 text-xs mt-2' }, 'Tap ⚙ to change color and voice')
+        React.createElement('p', { className: 'text-center text-gray-600 text-xs mt-2' }, 'Tap ⚙ to change settings')
       );
     }
 

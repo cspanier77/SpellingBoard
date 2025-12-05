@@ -1,4 +1,4 @@
-const CACHE_NAME = 'spelling-board-v2';
+const CACHE_NAME = 'spelling-board-v3';
 const urlsToCache = [
   '/',
   '/index.html',
